@@ -173,3 +173,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 .vscode/
+
+# DS store
+.DS_Store
+*.DS_Store

@@ -6,6 +6,9 @@
 #include <chrono>
 #include <random>
 #include <cuda_runtime.h>
+#include <fstream>
+#include <sstream>
+#include <string>
 
 #define MAX_OBJECTS 1000
 #define MAX_VERSIONS 1000
@@ -45,7 +48,7 @@ void checkCudaError(cudaError_t error, const char *file, int line) {
         exit(EXIT_FAILURE);
     }
 }
-
+// this is just for checking CUDA errors
 #define CHECK_CUDA(call) checkCudaError(call, __FILE__, __LINE__)
 
 class MVCCStore {
@@ -183,6 +186,74 @@ public:
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
         std::cout << "GPU test with " << num_operations << " operations took " << duration.count() / 1000.0 << "ms" << std::endl;
     }
+    
+    // this is gonna be for running tests with hardcoded csv data 
+    static void run_csv_test(MVCCStore& store, const std::string& filename) {
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file: " << filename << std::endl;
+            return;
+        }
+        
+        std::vector<int> object_ids;
+        std::vector<int> values;
+        
+        std::string line;
+        while (std::getline(file, line)) {
+            std::stringstream ss(line);
+            std::string item;
+            std::vector<std::string> row;
+            
+            while (std::getline(ss, item, ',')) {
+                row.push_back(item);
+            }
+            
+            if (row.size() >= 2) {
+                try {
+                    int obj_id = std::stoi(row[0]);
+                    int value = std::stoi(row[1]);
+                    object_ids.push_back(obj_id);
+                    values.push_back(value);
+                } catch (const std::exception& e) {
+                    std::cerr << "Error parsing line: " << line << std::endl;
+                }
+            }
+        }
+        // // ttrying this alternate approach 
+        // std::vector<int> object_ids;
+        // std::vector<int> values;
+        // std::vector<int> timestamps;
+        // std::string line;
+        // while (std::getline(file, line)) {
+        //     std::stringstream ss(line);
+        
+        
+        std::cout << "Loaded " << object_ids.size() << " operations from " << filename << std::endl;
+        
+        // actually running the cpu test
+        auto cpu_start = std::chrono::high_resolution_clock::now();
+        for (size_t i = 0; i < object_ids.size(); i++) {
+            store.write(object_ids[i], values[i]);
+            if (i % 100 == 0) store.commit();
+        }
+        store.commit();
+        auto cpu_end = std::chrono::high_resolution_clock::now();
+        auto cpu_duration = std::chrono::duration_cast<std::chrono::microseconds>(cpu_end - cpu_start);
+        
+        std::cout << "CSV CPU test with " << object_ids.size() << " operations took " 
+                  << cpu_duration.count() / 1000.0 << "ms" << std::endl;
+        
+        // actually running the gpu test
+        auto gpu_start = std::chrono::high_resolution_clock::now();
+        store.batch_write_gpu(object_ids, values);
+        store.commit();
+        CHECK_CUDA(cudaDeviceSynchronize());
+        auto gpu_end = std::chrono::high_resolution_clock::now();
+        auto gpu_duration = std::chrono::duration_cast<std::chrono::microseconds>(gpu_end - gpu_start);
+        
+        std::cout << "CSV GPU test with " << object_ids.size() << " operations took " 
+                  << gpu_duration.count() / 1000.0 << "ms" << std::endl;
+    }
 };
 
 int main() {
@@ -197,7 +268,7 @@ int main() {
     store.write(1, 300);
     std::cout << "Latest value (committed): " << store.read(1) << std::endl;
 
-    // Performance benchmarks
+    // performance benchmarks
     std::cout << "\nRunning benchmarks..." << std::endl;
     
     std::cout << "\nSmall dataset (1000 operations):" << std::endl;
@@ -211,6 +282,14 @@ int main() {
     std::cout << "\nLarge dataset (100000 operations):" << std::endl;
     Benchmark::run_cpu_test(store, 100000);
     Benchmark::run_gpu_test(store, 100000);
+    
+    // CSV file tests.
+    // probably for small and large GPU will be slower but for very large it'll be faster
+    std::cout << "\nRunning CSV file tests..." << std::endl;
+    Benchmark::run_csv_test(store, "csv_data/test_small.csv");
+    Benchmark::run_csv_test(store, "csv_data/test_large.csv");
+    std::cout << "\nRunning CSV file test with very large dataset (100000 operations):" << std::endl;
+    Benchmark::run_csv_test(store, "csv_data/test_very_large.csv");
     
     return 0;
 } 
