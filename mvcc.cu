@@ -286,10 +286,10 @@ int main() {
     // CSV file tests.
     // probably for small and large GPU will be slower but for very large it'll be faster
     std::cout << "\nRunning CSV file tests..." << std::endl;
-    Benchmark::run_csv_test(store, "test_small.csv");
-    Benchmark::run_csv_test(store, "test_large.csv");
+    Benchmark::run_csv_test(store, "csv_data/test_small.csv");
+    Benchmark::run_csv_test(store, "csv_data/test_large.csv");
     std::cout << "\nRunning CSV file test with very large dataset (100000 operations):" << std::endl;
-    Benchmark::run_csv_test(store, "test_very_large.csv");
+    Benchmark::run_csv_test(store, "csv_data/test_very_large.csv");
     
     return 0;
 } 
